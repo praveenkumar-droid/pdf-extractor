@@ -40,7 +40,11 @@ class JapanesePDFExtractor:
     def __init__(self):
         self.column_gap = config.COLUMN_GAP_THRESHOLD
         self.line_height = config.LINE_HEIGHT_THRESHOLD
-        
+
+        # Import layout analyzer for table detection
+        from layout_analyzer import LayoutAnalyzer
+        self.layout_analyzer = LayoutAnalyzer()
+
         # NOTE: Character normalization has been REMOVED (Phase 4)
         # Per LLM extraction specs: "EXTRACT ONLY - NEVER TRANSFORM"
         # All characters are now preserved exactly as they appear in PDF
@@ -156,29 +160,59 @@ class JapanesePDFExtractor:
     
     def _extract_page(self, page, headers: List[str], footers: List[str]) -> str:
         """Extract text from a single page"""
-        # Get all words with coordinates
+        # Get all words with coordinates AND font info for super/subscript detection
         words = page.extract_words(
             x_tolerance=3,
             y_tolerance=3,
-            keep_blank_chars=False
+            keep_blank_chars=False,
+            extra_attrs=['fontname', 'size', 'height']
         )
-        
+
         if not words:
             return ""
-        
+
+        # ══════════════════════════════════════════════════════════
+        # NEW: Get table regions and exclude words inside them
+        # This prevents duplicate extraction of table content
+        # ══════════════════════════════════════════════════════════
+        page_num = page.page_number if hasattr(page, 'page_number') else 1
+        table_regions = self._get_table_regions(page, page_num)
+
+        if table_regions:
+            # Filter out words that fall inside table regions
+            words = self._exclude_table_words(words, table_regions)
+        # ══════════════════════════════════════════════════════════
+
+        # ══════════════════════════════════════════════════════════
+        # NEW: Integrate superscripts/subscripts with base text
+        # This must happen BEFORE filtering to preserve context
+        # ══════════════════════════════════════════════════════════
+        words = self._integrate_super_subscripts(words)
+        # ══════════════════════════════════════════════════════════
+
         # Filter out headers, footers, page numbers (SMART filtering - Phase 3)
         if config.REMOVE_HEADERS_FOOTERS or config.REMOVE_PAGE_NUMBERS:
             words = self._filter_metadata(words, headers, footers, page.height, page.width)
-        
+
         # Detect columns
         columns = self._detect_columns(words, page.width)
-        
+
         # Extract text from each column
         page_texts = []
         for column_words in columns:
             column_text = self._extract_column(column_words)
             page_texts.append(column_text)
-        
+
+        # ══════════════════════════════════════════════════════════
+        # NEW: Add formatted tables at appropriate positions
+        # Tables are inserted based on Y-position
+        # ══════════════════════════════════════════════════════════
+        if table_regions:
+            result_text = '\n\n'.join(page_texts)
+            result_text = self._insert_tables(result_text, table_regions)
+            return result_text
+        # ══════════════════════════════════════════════════════════
+
         return '\n\n'.join(page_texts)
     
     def _filter_metadata(self, words: List[Dict], headers: List[str], 
@@ -243,14 +277,34 @@ class JapanesePDFExtractor:
                 # Otherwise, keep it (might be section start or content)
             
             # ═══════════════════════════════════════════════════════
-            # RULE 6: REMOVE ONLY EXTREME MARGINS
+            # RULE 6: SMART MARGIN HANDLING
             # ═══════════════════════════════════════════════════════
-            # Narrowed from 5% to 3% to preserve more content
-            if word['top'] < page_height * 0.03:  # Top 3%
+
+            # Top margin - still remove header area
+            if word['top'] < page_height * 0.05:  # Top 5%
+                # Check if it's a title (large text) - keep it
+                word_height = word.get('height', word.get('bottom', 0) - word['top'])
+                if word_height > 14:  # Likely a title
+                    filtered.append(word)
                 continue
-            if word['top'] > page_height * 0.97:  # Bottom 3%
+
+            # Bottom margin - CAREFUL handling for footnotes
+            if word['top'] > page_height * 0.90:  # Bottom 10%
+                # ══════════════════════════════════════════════════
+                # NEW: Check if this is footnote content
+                # ══════════════════════════════════════════════════
+                if self._is_footnote_content(text, words, word):
+                    filtered.append(word)
+                    continue
+
+                # Check if isolated page number
+                if self._is_page_number_not_content(text, word, page_height, page_width, words):
+                    continue
+
+                # Default: KEEP bottom content (might be important)
+                filtered.append(word)
                 continue
-            
+
             # ═══════════════════════════════════════════════════════
             # DEFAULT: KEEP IT (INCLUDE BY DEFAULT)
             # ═══════════════════════════════════════════════════════
@@ -362,7 +416,66 @@ class JapanesePDFExtractor:
                     return True
         
         return nearby_count > 0
-    
+
+    def _is_footnote_content(self, text: str, all_words: List[Dict], word: Dict) -> bool:
+        """
+        Determine if a word in the bottom region is footnote content.
+
+        Footnote indicators:
+        - Starts with footnote marker (*, †, ‡, ※, 注, [1], etc.)
+        - Is near other footnote markers
+        - Contains typical footnote patterns
+
+        Returns:
+            True if likely footnote content (KEEP IT)
+        """
+        # Direct footnote markers
+        footnote_patterns = [
+            r'^\*\d*',           # *1, *2, *
+            r'^※\d*',            # ※, ※1
+            r'^注\d*',           # 注, 注1
+            r'^†',               # †
+            r'^‡',               # ‡
+            r'^\[\d+\]',         # [1], [2]
+            r'^\(\d+\)',         # (1), (2)
+            r'^[¹²³⁴⁵⁶⁷⁸⁹⁰]',    # Unicode superscripts
+        ]
+
+        if any(re.match(pattern, text) for pattern in footnote_patterns):
+            return True
+
+        # Check if near footnote markers (within 100pt Y and on same "line")
+        word_y = word['top']
+
+        for other in all_words:
+            if other == word:
+                continue
+
+            other_text = other['text'].strip()
+            other_y = other['top']
+
+            # If there's a footnote marker nearby (vertically close)
+            if abs(other_y - word_y) < 20:  # Same line approximately
+                if any(re.match(pattern, other_text) for pattern in footnote_patterns):
+                    # This word is on same line as a footnote marker
+                    return True
+
+        # Check if text contains footnote-like content
+        # Common footnote phrases
+        footnote_phrases = [
+            '参照', '参考', '出典', '引用', 'See ', 'Ref.', 'Note:',
+            'Source:', '注記', '備考'
+        ]
+
+        if any(phrase in text for phrase in footnote_phrases):
+            return True
+
+        # If it has substantial content (not just a number), keep it
+        if len(text) > 10:
+            return True
+
+        return False
+
     def _detect_columns(self, words: List[Dict], page_width: float) -> List[List[Dict]]:
         """Detect columns by analyzing X-position gaps"""
         if not words:
@@ -410,41 +523,381 @@ class JapanesePDFExtractor:
         
         lines.append(current_line)
         
-        # Build text - PRESERVE CHARACTERS EXACTLY
+        # Build text with intelligent spacing
         text_lines = []
         for line in lines:
             line_sorted = sorted(line, key=lambda w: w['x0'])
-            # NO TRANSFORMATION - Join text exactly as extracted
-            line_text = ''.join([w['text'] for w in line_sorted])
+
+            # ══════════════════════════════════════════════════════
+            # NEW: Intelligent word spacing
+            # ══════════════════════════════════════════════════════
+            line_text = self._join_words_with_spacing(line_sorted)
             text_lines.append(line_text)
-        
+
         return '\n'.join(text_lines)
-    
+
+    def _join_words_with_spacing(self, words: List[Dict]) -> str:
+        """
+        Join words with appropriate spacing.
+
+        Rules:
+        - Add space between words if there's a gap
+        - Don't add space between Japanese characters
+        - Don't add space between character and punctuation
+        - Preserve original spacing where possible
+        """
+        if not words:
+            return ""
+
+        if len(words) == 1:
+            return words[0]['text']
+
+        result = words[0]['text']
+
+        for i in range(1, len(words)):
+            prev_word = words[i - 1]
+            curr_word = words[i]
+
+            # Calculate gap between words
+            gap = curr_word['x0'] - prev_word['x1']
+
+            # Get last char of previous and first char of current
+            prev_char = prev_word['text'][-1] if prev_word['text'] else ''
+            curr_char = curr_word['text'][0] if curr_word['text'] else ''
+
+            # Decide whether to add space
+            add_space = self._should_add_space(prev_char, curr_char, gap)
+
+            if add_space:
+                result += ' '
+
+            result += curr_word['text']
+
+        return result
+
+    def _should_add_space(self, prev_char: str, curr_char: str, gap: float) -> bool:
+        """
+        Determine if a space should be added between two characters.
+
+        Args:
+            prev_char: Last character of previous word
+            curr_char: First character of current word
+            gap: Pixel gap between words
+        """
+        # No space if gap is tiny (characters touching)
+        if gap < 2:
+            return False
+
+        # Check character types
+        prev_is_jp = self._is_japanese_char(prev_char)
+        curr_is_jp = self._is_japanese_char(curr_char)
+
+        prev_is_punct = prev_char in '。、！？）】」』：；,.!?)]>"\''
+        curr_is_punct = curr_char in '。、！？（【「『：；,.!?([<"\''
+
+        # Japanese to Japanese: no space (unless large gap)
+        if prev_is_jp and curr_is_jp:
+            return gap > 10  # Only if unusually large gap
+
+        # Punctuation: usually no space
+        if prev_is_punct or curr_is_punct:
+            return False
+
+        # English/numbers: add space if there's a gap
+        if gap > 3:
+            return True
+
+        return False
+
+    def _is_japanese_char(self, char: str) -> bool:
+        """Check if character is Japanese (hiragana, katakana, kanji)."""
+        if not char:
+            return False
+
+        code = ord(char)
+
+        # Hiragana: 3040-309F
+        # Katakana: 30A0-30FF
+        # CJK: 4E00-9FFF
+        # CJK Extension: 3400-4DBF
+
+        return (0x3040 <= code <= 0x309F or  # Hiragana
+                0x30A0 <= code <= 0x30FF or  # Katakana
+                0x4E00 <= code <= 0x9FFF or  # CJK
+                0x3400 <= code <= 0x4DBF)    # CJK Extension
+
+    def _integrate_super_subscripts(self, words: List[Dict]) -> List[Dict]:
+        """
+        Detect superscripts/subscripts and attach them to base text.
+
+        This modifies the words list to combine base text with its
+        super/subscripts into single elements.
+
+        Returns:
+            Modified words list with super/subscripts integrated
+        """
+        if not words or len(words) < 2:
+            return words
+
+        # Calculate average font size for reference
+        sizes = [w.get('size', w.get('height', 10)) for w in words]
+        avg_size = sum(sizes) / len(sizes) if sizes else 10
+
+        # Sort by position for processing
+        sorted_words = sorted(words, key=lambda w: (w['top'], w['x0']))
+
+        # Group into horizontal bands (elements on same line)
+        bands = self._group_into_horizontal_bands(sorted_words)
+
+        # Process each band to attach super/subscripts
+        result_words = []
+
+        for band in bands:
+            # Sort band by X position
+            band = sorted(band, key=lambda w: w['x0'])
+
+            # Find base elements and attach small elements
+            processed_band = self._attach_scripts_in_band(band, avg_size)
+            result_words.extend(processed_band)
+
+        return result_words
+
+    def _group_into_horizontal_bands(self, words: List[Dict], tolerance: float = 15) -> List[List[Dict]]:
+        """
+        Group words into horizontal bands (same visual line).
+
+        Words within 'tolerance' vertical distance are considered same line.
+        """
+        if not words:
+            return []
+
+        bands = []
+        current_band = [words[0]]
+        current_y = words[0]['top']
+
+        for word in words[1:]:
+            if abs(word['top'] - current_y) <= tolerance:
+                current_band.append(word)
+            else:
+                bands.append(current_band)
+                current_band = [word]
+                current_y = word['top']
+
+        if current_band:
+            bands.append(current_band)
+
+        return bands
+
+    def _attach_scripts_in_band(self, band: List[Dict], avg_size: float) -> List[Dict]:
+        """
+        Within a horizontal band, attach super/subscripts to their base elements.
+        """
+        if len(band) <= 1:
+            return band
+
+        result = []
+        skip_indices = set()
+
+        for i, word in enumerate(band):
+            if i in skip_indices:
+                continue
+
+            word_size = word.get('size', word.get('height', 10))
+
+            # If this is a normal-sized element, check for adjacent small elements
+            if word_size >= avg_size * 0.7:
+                combined_text = word['text']
+
+                # Look at next element(s)
+                j = i + 1
+                while j < len(band):
+                    next_word = band[j]
+                    next_size = next_word.get('size', next_word.get('height', 10))
+
+                    # Check if next word is small and immediately adjacent
+                    gap = next_word['x0'] - word['x1']
+
+                    if next_size < avg_size * 0.7 and gap < 5:  # Small and close
+                        # Determine if superscript or subscript based on Y position
+                        word_baseline = word.get('bottom', word['top'] + word_size)
+                        next_baseline = next_word.get('bottom', next_word['top'] + next_size)
+
+                        # Superscript: next element's bottom is above word's middle
+                        word_middle = (word['top'] + word_baseline) / 2
+
+                        if next_baseline < word_middle:
+                            # Superscript - convert to Unicode superscript chars
+                            combined_text += self._to_superscript(next_word['text'])
+                        elif next_word['top'] > word_middle:
+                            # Subscript - convert to Unicode subscript chars
+                            combined_text += self._to_subscript(next_word['text'])
+                        else:
+                            # Normal adjacent text
+                            combined_text += next_word['text']
+
+                        skip_indices.add(j)
+
+                        # Update word bounds to include the script
+                        word['x1'] = max(word['x1'], next_word['x1'])
+                        j += 1
+                    else:
+                        break
+
+                # Create combined word
+                new_word = word.copy()
+                new_word['text'] = combined_text
+                result.append(new_word)
+
+            elif i not in skip_indices:
+                # Small element not attached to anything - keep it
+                result.append(word)
+
+        return result
+
+    def _to_superscript(self, text: str) -> str:
+        """
+        Convert text to Unicode superscript characters where possible.
+
+        For characters without Unicode superscript, keep as-is.
+        """
+        superscript_map = {
+            '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+            '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+            '+': '⁺', '-': '⁻', '=': '⁼', '(': '⁽', ')': '⁾',
+            'n': 'ⁿ', 'i': 'ⁱ',
+            '*': '*',  # Keep asterisk as-is for footnote markers
+        }
+
+        result = ''
+        for char in text:
+            result += superscript_map.get(char, char)
+
+        return result
+
+    def _to_subscript(self, text: str) -> str:
+        """
+        Convert text to Unicode subscript characters where possible.
+        """
+        subscript_map = {
+            '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄',
+            '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉',
+            '+': '₊', '-': '₋', '=': '₌', '(': '₍', ')': '₎',
+            'a': 'ₐ', 'e': 'ₑ', 'o': 'ₒ', 'x': 'ₓ',
+        }
+
+        result = ''
+        for char in text:
+            result += subscript_map.get(char, char)
+
+        return result
+
+    def _get_table_regions(self, page, page_num: int) -> List[dict]:
+        """
+        Get bounding boxes of all tables on the page.
+
+        Returns:
+            List of dicts with keys: x0, top, x1, bottom, table_obj
+        """
+        try:
+            tables = self.layout_analyzer._detect_tables(page, page_num)
+
+            regions = []
+            for table in tables:
+                regions.append({
+                    'x0': table.x0,
+                    'top': table.top,
+                    'x1': table.x1,
+                    'bottom': table.bottom,
+                    'table_obj': table
+                })
+
+            return regions
+        except Exception as e:
+            # If table detection fails, return empty list
+            return []
+
+    def _exclude_table_words(self, words: List[Dict], table_regions: List[dict]) -> List[Dict]:
+        """
+        Remove words that fall inside table regions.
+
+        This prevents duplicate extraction of table content.
+        """
+        filtered = []
+
+        for word in words:
+            word_center_x = (word['x0'] + word['x1']) / 2
+            word_center_y = (word['top'] + word['bottom']) / 2
+
+            in_table = False
+            for region in table_regions:
+                # Check if word center is inside table region
+                if (region['x0'] <= word_center_x <= region['x1'] and
+                    region['top'] <= word_center_y <= region['bottom']):
+                    in_table = True
+                    break
+
+            if not in_table:
+                filtered.append(word)
+
+        return filtered
+
+    def _insert_tables(self, text: str, table_regions: List[dict]) -> str:
+        """
+        Insert formatted tables at appropriate positions in the text.
+
+        Tables are inserted based on their Y-position relative to surrounding text.
+        """
+        if not table_regions:
+            return text
+
+        # Sort tables by Y position (top to bottom)
+        sorted_tables = sorted(table_regions, key=lambda r: r['top'])
+
+        # For simplicity, append tables at the end with position markers
+        # A more sophisticated approach would interleave based on Y-coordinates
+
+        result = text
+
+        for region in sorted_tables:
+            table = region['table_obj']
+            table_text = self._format_table(table)
+            result += f"\n\n{table_text}"
+
+        return result
+
+    def _format_table(self, table) -> str:
+        """Format a table for text output."""
+        lines = []
+        lines.append(f"[TABLE: {table.rows}x{table.cols}]")
+        lines.append(table.to_text(style="pipe"))
+        lines.append("[TABLE END]")
+        return '\n'.join(lines)
+
     def _cleanup_text(self, text: str) -> str:
         """
         Apply minimal cleanup - NO CHARACTER TRANSFORMATION
-        
+
         Per LLM extraction specs: "EXTRACT ONLY - NEVER TRANSFORM"
         Characters are preserved exactly as they appear in PDF
         """
         # REMOVED: Character normalization (violates extraction rules - Phase 4)
         # All characters are now preserved in their original form
-        
+
         # Optional spacing fixes (can be disabled via config)
         if config.FIX_SPACING:
             text = self._fix_spacing(text)
-        
+
         # Optional line joining (preserves content structure)
         if config.JOIN_LINES:
             text = self._join_lines(text)
-        
+
         # Optional punctuation cleanup (minimal changes)
         if config.FIX_PUNCTUATION:
             text = self._fix_punctuation(text)
-        
+
         # Remove excessive blank lines only
         text = re.sub(r'\n{4,}', '\n\n\n', text)
-        
+
         return text.strip()
     
     def _fix_spacing(self, text: str) -> str:

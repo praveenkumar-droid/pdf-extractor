@@ -45,6 +45,7 @@ from output_formatter import OutputFormatter
 from error_handler import ErrorHandler, SafeExtractor
 from context_windows import LargeDocumentProcessor, ChunkingStrategy
 from flagging_system import FlaggingSystem, FlagType, FlagSeverity
+from anti_hallucination import AntiHallucinationVerifier
 
 
 @dataclass
@@ -143,7 +144,10 @@ class MasterExtractor:
             llm_backend=llm_backend,
             api_key=llm_api_key
         )
-        
+
+        # Initialize anti-hallucination verifier (Phase 5)
+        self.anti_hallucination = AntiHallucinationVerifier()
+
         # Initialize error handler (Phase 8)
         self.error_handler = ErrorHandler(verbose=verbose)
         
@@ -352,18 +356,17 @@ class MasterExtractor:
             })
         
         # ═══════════════════════════════════════════════════════════
-        # INTEGRATE TABLES AND FOOTNOTES INTO PAGES
+        # INTEGRATE TEXTBOXES AND FOOTNOTES INTO PAGES
+        # NOTE: Tables are now handled by extractor.py to prevent duplication
         # ═══════════════════════════════════════════════════════════
         if self.verbose:
-            print("\n[Integration] Adding tables and footnotes to pages...")
-        
+            print("\n[Integration] Adding text boxes and footnotes to pages...")
+
         pages_with_content = []
         for page_num, page_text in enumerate(pages, 1):
-            # Add tables for this page
-            page_tables = [t for t in all_tables if t['page'] == page_num]
-            for table in page_tables:
-                page_text += f"\n\n{table['text']}"
-            
+            # NOTE: Tables are NO LONGER appended here - they're integrated
+            # during extraction in extractor.py to prevent duplication
+
             # Add text boxes for this page
             page_boxes = [b for b in all_textboxes if b['page'] == page_num]
             for box in page_boxes:
@@ -373,7 +376,7 @@ class MasterExtractor:
                     page_text += f"\n\n[NOTE BOX]\n{box['text']}\n[NOTE BOX END]"
                 else:
                     page_text += f"\n\n[{box['type'].upper()} BOX]\n{box['text']}\n[{box['type'].upper()} BOX END]"
-            
+
             # Add footnotes for this page
             page_footnotes = [fn for fn in footnotes_list if fn['page'] == page_num]
             if page_footnotes:
@@ -381,7 +384,7 @@ class MasterExtractor:
                 page_text += "FOOTNOTES:\n"
                 for fn in page_footnotes:
                     page_text += f"{fn['marker']}: {fn['text']}\n"
-            
+
             pages_with_content.append(page_text)
         
         # ═══════════════════════════════════════════════════════════
@@ -423,15 +426,48 @@ class MasterExtractor:
         # ═══════════════════════════════════════════════════════════
         if self.verbose:
             print("\n[Verification] Checking extraction completeness...")
-        
+
         inventory_report = self.inventory_analyzer.verify_extraction(
             inventories, raw_text, len(pages)
         )
-        
+
         if self.verbose:
             status_icon = "✓" if inventory_report['status'] == 'GOOD' else "⚠" if inventory_report['status'] == 'WARNING' else "✗"
             print(f"  → Coverage: {inventory_report['coverage_percent']:.1f}% ({status_icon} {inventory_report['status']})")
-        
+
+        # ═══════════════════════════════════════════════════════════
+        # PHASE 5b: ANTI-HALLUCINATION VERIFICATION
+        # ═══════════════════════════════════════════════════════════
+        if self.verbose:
+            print("\n[Phase 5b] Running anti-hallucination verification...")
+
+        verification_result = self.anti_hallucination.verify(
+            raw_text,
+            inventory_report,
+            len(pages)
+        )
+
+        if self.verbose:
+            if verification_result.passed:
+                print(f"  → Verification PASSED")
+                print(f"  → Element match: {verification_result.element_match_rate:.0%}")
+                print(f"  → Position consistency: {verification_result.position_consistency:.0%}")
+            else:
+                print(f"  → Verification FAILED: {len(verification_result.issues)} issues")
+                for issue in verification_result.issues[:3]:
+                    print(f"    • {issue}")
+
+        # Remove any detected hallucinations
+        if verification_result.suspicious_content:
+            raw_text, removed = self.anti_hallucination.remove_suspicious_content(raw_text)
+            if self.verbose and removed:
+                print(f"  → Removed {len(removed)} suspicious items")
+
+        # If verification failed severely, log warning
+        if not verification_result.passed:
+            if self.verbose:
+                print(f"  ⚠ Anti-hallucination check failed - review recommended")
+
         # ═══════════════════════════════════════════════════════════
         # PHASE 7: QUALITY SCORING
         # ═══════════════════════════════════════════════════════════
