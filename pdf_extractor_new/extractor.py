@@ -160,11 +160,12 @@ class JapanesePDFExtractor:
     
     def _extract_page(self, page, headers: List[str], footers: List[str]) -> str:
         """Extract text from a single page"""
-        # Get all words with coordinates
+        # Get all words with coordinates AND font info for super/subscript detection
         words = page.extract_words(
             x_tolerance=3,
             y_tolerance=3,
-            keep_blank_chars=False
+            keep_blank_chars=False,
+            extra_attrs=['fontname', 'size', 'height']
         )
 
         if not words:
@@ -180,6 +181,13 @@ class JapanesePDFExtractor:
         if table_regions:
             # Filter out words that fall inside table regions
             words = self._exclude_table_words(words, table_regions)
+        # ══════════════════════════════════════════════════════════
+
+        # ══════════════════════════════════════════════════════════
+        # NEW: Integrate superscripts/subscripts with base text
+        # This must happen BEFORE filtering to preserve context
+        # ══════════════════════════════════════════════════════════
+        words = self._integrate_super_subscripts(words)
         # ══════════════════════════════════════════════════════════
 
         # Filter out headers, footers, page numbers (SMART filtering - Phase 3)
@@ -617,6 +625,171 @@ class JapanesePDFExtractor:
                 0x30A0 <= code <= 0x30FF or  # Katakana
                 0x4E00 <= code <= 0x9FFF or  # CJK
                 0x3400 <= code <= 0x4DBF)    # CJK Extension
+
+    def _integrate_super_subscripts(self, words: List[Dict]) -> List[Dict]:
+        """
+        Detect superscripts/subscripts and attach them to base text.
+
+        This modifies the words list to combine base text with its
+        super/subscripts into single elements.
+
+        Returns:
+            Modified words list with super/subscripts integrated
+        """
+        if not words or len(words) < 2:
+            return words
+
+        # Calculate average font size for reference
+        sizes = [w.get('size', w.get('height', 10)) for w in words]
+        avg_size = sum(sizes) / len(sizes) if sizes else 10
+
+        # Sort by position for processing
+        sorted_words = sorted(words, key=lambda w: (w['top'], w['x0']))
+
+        # Group into horizontal bands (elements on same line)
+        bands = self._group_into_horizontal_bands(sorted_words)
+
+        # Process each band to attach super/subscripts
+        result_words = []
+
+        for band in bands:
+            # Sort band by X position
+            band = sorted(band, key=lambda w: w['x0'])
+
+            # Find base elements and attach small elements
+            processed_band = self._attach_scripts_in_band(band, avg_size)
+            result_words.extend(processed_band)
+
+        return result_words
+
+    def _group_into_horizontal_bands(self, words: List[Dict], tolerance: float = 15) -> List[List[Dict]]:
+        """
+        Group words into horizontal bands (same visual line).
+
+        Words within 'tolerance' vertical distance are considered same line.
+        """
+        if not words:
+            return []
+
+        bands = []
+        current_band = [words[0]]
+        current_y = words[0]['top']
+
+        for word in words[1:]:
+            if abs(word['top'] - current_y) <= tolerance:
+                current_band.append(word)
+            else:
+                bands.append(current_band)
+                current_band = [word]
+                current_y = word['top']
+
+        if current_band:
+            bands.append(current_band)
+
+        return bands
+
+    def _attach_scripts_in_band(self, band: List[Dict], avg_size: float) -> List[Dict]:
+        """
+        Within a horizontal band, attach super/subscripts to their base elements.
+        """
+        if len(band) <= 1:
+            return band
+
+        result = []
+        skip_indices = set()
+
+        for i, word in enumerate(band):
+            if i in skip_indices:
+                continue
+
+            word_size = word.get('size', word.get('height', 10))
+
+            # If this is a normal-sized element, check for adjacent small elements
+            if word_size >= avg_size * 0.7:
+                combined_text = word['text']
+
+                # Look at next element(s)
+                j = i + 1
+                while j < len(band):
+                    next_word = band[j]
+                    next_size = next_word.get('size', next_word.get('height', 10))
+
+                    # Check if next word is small and immediately adjacent
+                    gap = next_word['x0'] - word['x1']
+
+                    if next_size < avg_size * 0.7 and gap < 5:  # Small and close
+                        # Determine if superscript or subscript based on Y position
+                        word_baseline = word.get('bottom', word['top'] + word_size)
+                        next_baseline = next_word.get('bottom', next_word['top'] + next_size)
+
+                        # Superscript: next element's bottom is above word's middle
+                        word_middle = (word['top'] + word_baseline) / 2
+
+                        if next_baseline < word_middle:
+                            # Superscript - convert to Unicode superscript chars
+                            combined_text += self._to_superscript(next_word['text'])
+                        elif next_word['top'] > word_middle:
+                            # Subscript - convert to Unicode subscript chars
+                            combined_text += self._to_subscript(next_word['text'])
+                        else:
+                            # Normal adjacent text
+                            combined_text += next_word['text']
+
+                        skip_indices.add(j)
+
+                        # Update word bounds to include the script
+                        word['x1'] = max(word['x1'], next_word['x1'])
+                        j += 1
+                    else:
+                        break
+
+                # Create combined word
+                new_word = word.copy()
+                new_word['text'] = combined_text
+                result.append(new_word)
+
+            elif i not in skip_indices:
+                # Small element not attached to anything - keep it
+                result.append(word)
+
+        return result
+
+    def _to_superscript(self, text: str) -> str:
+        """
+        Convert text to Unicode superscript characters where possible.
+
+        For characters without Unicode superscript, keep as-is.
+        """
+        superscript_map = {
+            '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+            '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+            '+': '⁺', '-': '⁻', '=': '⁼', '(': '⁽', ')': '⁾',
+            'n': 'ⁿ', 'i': 'ⁱ',
+            '*': '*',  # Keep asterisk as-is for footnote markers
+        }
+
+        result = ''
+        for char in text:
+            result += superscript_map.get(char, char)
+
+        return result
+
+    def _to_subscript(self, text: str) -> str:
+        """
+        Convert text to Unicode subscript characters where possible.
+        """
+        subscript_map = {
+            '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄',
+            '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉',
+            '+': '₊', '-': '₋', '=': '₌', '(': '₍', ')': '₎',
+            'a': 'ₐ', 'e': 'ₑ', 'o': 'ₒ', 'x': 'ₓ',
+        }
+
+        result = ''
+        for char in text:
+            result += subscript_map.get(char, char)
+
+        return result
 
     def _get_table_regions(self, page, page_num: int) -> List[dict]:
         """
