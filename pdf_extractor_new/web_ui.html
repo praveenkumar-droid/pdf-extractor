@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Text Extractor - Web UI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+        }
+        
+        .status-bar {
+            padding: 15px 30px;
+            background: #f8f9ff;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ff4444;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-dot.connected {
+            background: #44ff44;
+            animation: none;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .alert {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .alert h3 {
+            color: #856404;
+            margin-bottom: 10px;
+        }
+        
+        .alert ol {
+            margin-left: 20px;
+            color: #856404;
+        }
+        
+        .alert li {
+            margin: 5px 0;
+        }
+        
+        .alert code {
+            background: #fff;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            background: #f8f9ff;
+            cursor: pointer;
+            transition: all 0.3s;
+            opacity: 0.5;
+        }
+        
+        .upload-area.active {
+            opacity: 1;
+        }
+        
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f0f1ff;
+        }
+        
+        .upload-area.dragover {
+            border-color: #764ba2;
+            background: #e8e9ff;
+        }
+        
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+        
+        .upload-area h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .upload-area p {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+        
+        .options {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f8f9ff;
+            border-radius: 10px;
+        }
+        
+        .option {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+        }
+        
+        .option input[type="checkbox"] {
+            margin-right: 10px;
+            width: 18px;
+            height: 18px;
+        }
+        
+        .option label {
+            color: #333;
+            cursor: pointer;
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9ff;
+            border-radius: 10px;
+            display: none;
+        }
+        
+        .result.show {
+            display: block;
+        }
+        
+        .result h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .stat {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .text-preview {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .loading.show {
+            display: block;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .error.show {
+            display: block;
+        }
+        
+        .file-list {
+            margin-top: 15px;
+        }
+        
+        .file-item {
+            background: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin: 5px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .file-name {
+            font-weight: 500;
+        }
+        
+        .file-size {
+            color: #666;
+            font-size: 12px;
+        }
+        
+        .btn-small {
+            background: #ff4444;
+            color: white;
+            border: none;
+            padding: 5px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .btn-small:hover {
+            background: #cc0000;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📄 Japanese PDF Text Extractor</h1>
+            <p>Upload your PDF and get clean, ordered text instantly</p>
+        </div>
+        
+        <div class="status-bar">
+            <div class="status">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">Checking connection...</span>
+            </div>
+            <span id="apiUrl" style="font-size: 12px; color: #666;">http://localhost:8000</span>
+        </div>
+        
+        <div class="content">
+            <div class="alert" id="setupAlert">
+                <h3>⚠️ API Server Not Running</h3>
+                <p><strong>To use this web interface, you need to start the API server first:</strong></p>
+                <ol>
+                    <li>Open a terminal/command prompt</li>
+                    <li>Navigate to the project folder: <code>cd D:\pdf_extractor_new</code></li>
+                    <li>Run: <code>python start_api.py</code></li>
+                    <li>Wait for "Uvicorn running on http://0.0.0.0:8000"</li>
+                    <li>Refresh this page</li>
+                </ol>
+                <p style="margin-top: 15px;"><strong>Alternative:</strong> Use the command-line tool instead:</p>
+                <code>python main.py -f your_document.pdf</code>
+            </div>
+            
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">📁</div>
+                <h3>Drop PDF file here or click to browse</h3>
+                <p>Supports single PDF files up to 50MB</p>
+                <input type="file" id="fileInput" accept=".pdf">
+            </div>
+            
+            <div class="file-list" id="fileList"></div>
+            
+            <div class="options">
+                <h3 style="margin-bottom: 15px; color: #667eea;">Extraction Options</h3>
+                <div class="option">
+                    <input type="checkbox" id="normalize" checked>
+                    <label for="normalize">Normalize characters (half-width → full-width)</label>
+                </div>
+                <div class="option">
+                    <input type="checkbox" id="fixSpacing" checked>
+                    <label for="fixSpacing">Fix spacing between Japanese and English</label>
+                </div>
+                <div class="option">
+                    <input type="checkbox" id="removeHeaders" checked>
+                    <label for="removeHeaders">Remove headers, footers, and page numbers</label>
+                </div>
+            </div>
+            
+            <button class="btn" id="extractBtn" disabled>Extract Text</button>
+            
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Extracting text... Please wait</p>
+            </div>
+            
+            <div class="error" id="error"></div>
+            
+            <div class="result" id="result">
+                <h3>Extraction Results</h3>
+                <div class="stats">
+                    <div class="stat">
+                        <div class="stat-value" id="charCount">-</div>
+                        <div class="stat-label">Characters</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="lineCount">-</div>
+                        <div class="stat-label">Lines</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="wordCount">-</div>
+                        <div class="stat-label">Words</div>
+                    </div>
+                </div>
+                <h4 style="margin-bottom: 10px;">Text Preview:</h4>
+                <div class="text-preview" id="textPreview"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const API_URL = 'http://localhost:8000';
+        
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileList = document.getElementById('fileList');
+        const extractBtn = document.getElementById('extractBtn');
+        const loading = document.getElementById('loading');
+        const result = document.getElementById('result');
+        const error = document.getElementById('error');
+        const setupAlert = document.getElementById('setupAlert');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        
+        let selectedFile = null;
+        let apiConnected = false;
+        
+        // Check API connection on load
+        async function checkConnection() {
+            try {
+                const response = await fetch(`${API_URL}/health`, { 
+                    method: 'GET',
+                    mode: 'cors'
+                });
+                
+                if (response.ok) {
+                    apiConnected = true;
+                    statusDot.classList.add('connected');
+                    statusText.textContent = 'Connected to API';
+                    setupAlert.style.display = 'none';
+                    uploadArea.classList.add('active');
+                    return true;
+                }
+            } catch (err) {
+                console.error('Connection failed:', err);
+            }
+            
+            apiConnected = false;
+            statusDot.classList.remove('connected');
+            statusText.textContent = 'API Server Not Running';
+            setupAlert.style.display = 'block';
+            uploadArea.classList.remove('active');
+            return false;
+        }
+        
+        // Check connection every 3 seconds
+        checkConnection();
+        setInterval(checkConnection, 3000);
+        
+        // Upload area click
+        uploadArea.addEventListener('click', () => {
+            if (apiConnected) {
+                fileInput.click();
+            } else {
+                showError('Please start the API server first. See instructions above.');
+            }
+        });
+        
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                selectedFile = e.target.files[0];
+                showFileInfo(selectedFile);
+                extractBtn.disabled = false;
+            }
+        });
+        
+        // Drag and drop
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            if (apiConnected) {
+                uploadArea.classList.add('dragover');
+            }
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            if (!apiConnected) {
+                showError('Please start the API server first. See instructions above.');
+                return;
+            }
+            
+            if (e.dataTransfer.files.length > 0) {
+                const file = e.dataTransfer.files[0];
+                if (file.type === 'application/pdf') {
+                    selectedFile = file;
+                    showFileInfo(file);
+                    extractBtn.disabled = false;
+                } else {
+                    showError('Please drop a PDF file');
+                }
+            }
+        });
+        
+        // Show file info
+        function showFileInfo(file) {
+            const sizeKB = (file.size / 1024).toFixed(1);
+            fileList.innerHTML = `
+                <div class="file-item">
+                    <div>
+                        <div class="file-name">📄 ${file.name}</div>
+                        <div class="file-size">${sizeKB} KB</div>
+                    </div>
+                    <button onclick="clearFile()" class="btn-small">Remove</button>
+                </div>
+            `;
+        }
+        
+        // Clear file
+        window.clearFile = function() {
+            selectedFile = null;
+            fileInput.value = '';
+            fileList.innerHTML = '';
+            extractBtn.disabled = true;
+            result.classList.remove('show');
+        }
+        
+        // Extract button click
+        extractBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+            
+            if (!apiConnected) {
+                showError('API server not running. Please start it first.');
+                return;
+            }
+            
+            // Hide previous results
+            result.classList.remove('show');
+            error.classList.remove('show');
+            
+            // Show loading
+            loading.classList.add('show');
+            extractBtn.disabled = true;
+            
+            try {
+                // Prepare form data
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+                
+                // Get options
+                const normalize = document.getElementById('normalize').checked;
+                const fixSpacing = document.getElementById('fixSpacing').checked;
+                const removeHeaders = document.getElementById('removeHeaders').checked;
+                
+                // Make request
+                const response = await fetch(
+                    `${API_URL}/extract?normalize=${normalize}&fix_spacing=${fixSpacing}&remove_headers=${removeHeaders}`,
+                    {
+                        method: 'POST',
+                        body: formData
+                    }
+                );
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Show results
+                showResults(data);
+                
+            } catch (err) {
+                showError(`Extraction failed: ${err.message}`);
+            } finally {
+                loading.classList.remove('show');
+                extractBtn.disabled = false;
+            }
+        });
+        
+        // Show results
+        function showResults(data) {
+            document.getElementById('charCount').textContent = data.statistics.characters.toLocaleString();
+            document.getElementById('lineCount').textContent = data.statistics.lines.toLocaleString();
+            document.getElementById('wordCount').textContent = data.statistics.words.toLocaleString();
+            document.getElementById('textPreview').textContent = data.text;
+            
+            result.classList.add('show');
+        }
+        
+        // Show error
+        function showError(message) {
+            error.textContent = '⚠️ ' + message;
+            error.classList.add('show');
+            setTimeout(() => {
+                error.classList.remove('show');
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

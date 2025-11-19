@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  pdf-extractor:
+    build: .
+    container_name: pdf-extraction-system
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./input:/app/input
+      - ./output:/app/output
+      - ./logs:/app/logs
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped

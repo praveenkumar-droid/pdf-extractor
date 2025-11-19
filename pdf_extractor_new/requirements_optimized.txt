@@ -1,0 +1,27 @@
+# PDF Extractor - Optimized for 95%+ Accuracy
+# Core dependencies
+pdfplumber==0.11.0
+tqdm==4.66.1
+python-dotenv==1.0.0
+
+# API server
+fastapi==0.104.1
+uvicorn==0.24.0
+python-multipart==0.0.6
+aiofiles==23.2.1
+
+# LLM APIs (for verification)
+anthropic>=0.18.0
+openai>=1.12.0
+
+# Multi-engine extraction
+PyMuPDF>=1.23.0
+pdfminer.six>=20221105
+
+# Optional but recommended
+pillow>=10.0.0
+numpy>=1.24.0
+
+# Development
+pytest>=7.4.0
+black>=23.0.0

@@ -1,0 +1,21 @@
+# Core Dependencies
+pdfplumber==0.11.0
+tqdm==4.66.1
+python-dotenv==1.0.0
+
+# API Server
+fastapi==0.104.1
+uvicorn==0.24.0
+python-multipart==0.0.6
+aiofiles==23.2.1
+
+# Multi-Engine PDF Processing (Optional but recommended)
+pymupdf==1.23.8
+pdfminer.six==20231228
+
+# LLM Integration (Optional - for AI verification)
+anthropic==0.8.1
+openai==1.6.1
+
+# Additional utilities
+requests==2.31.0
