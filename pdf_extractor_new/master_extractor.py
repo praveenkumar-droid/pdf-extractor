@@ -352,18 +352,17 @@ class MasterExtractor:
             })
         
         # ═══════════════════════════════════════════════════════════
-        # INTEGRATE TABLES AND FOOTNOTES INTO PAGES
+        # INTEGRATE TEXTBOXES AND FOOTNOTES INTO PAGES
+        # NOTE: Tables are now handled by extractor.py to prevent duplication
         # ═══════════════════════════════════════════════════════════
         if self.verbose:
-            print("\n[Integration] Adding tables and footnotes to pages...")
-        
+            print("\n[Integration] Adding text boxes and footnotes to pages...")
+
         pages_with_content = []
         for page_num, page_text in enumerate(pages, 1):
-            # Add tables for this page
-            page_tables = [t for t in all_tables if t['page'] == page_num]
-            for table in page_tables:
-                page_text += f"\n\n{table['text']}"
-            
+            # NOTE: Tables are NO LONGER appended here - they're integrated
+            # during extraction in extractor.py to prevent duplication
+
             # Add text boxes for this page
             page_boxes = [b for b in all_textboxes if b['page'] == page_num]
             for box in page_boxes:
@@ -373,7 +372,7 @@ class MasterExtractor:
                     page_text += f"\n\n[NOTE BOX]\n{box['text']}\n[NOTE BOX END]"
                 else:
                     page_text += f"\n\n[{box['type'].upper()} BOX]\n{box['text']}\n[{box['type'].upper()} BOX END]"
-            
+
             # Add footnotes for this page
             page_footnotes = [fn for fn in footnotes_list if fn['page'] == page_num]
             if page_footnotes:
@@ -381,7 +380,7 @@ class MasterExtractor:
                 page_text += "FOOTNOTES:\n"
                 for fn in page_footnotes:
                     page_text += f"{fn['marker']}: {fn['text']}\n"
-            
+
             pages_with_content.append(page_text)
         
         # ═══════════════════════════════════════════════════════════
