@@ -597,11 +597,17 @@
         
         // Show results
         function showResults(data) {
-            document.getElementById('charCount').textContent = data.statistics.characters.toLocaleString();
-            document.getElementById('lineCount').textContent = data.statistics.lines.toLocaleString();
-            document.getElementById('wordCount').textContent = data.statistics.words.toLocaleString();
-            document.getElementById('textPreview').textContent = data.text;
-            
+            // Safely access statistics with fallbacks
+            const stats = data.statistics || {};
+            const chars = stats.characters != null ? stats.characters.toLocaleString() : '0';
+            const lines = stats.lines != null ? stats.lines.toLocaleString() : '0';
+            const words = stats.words != null ? stats.words.toLocaleString() : '0';
+
+            document.getElementById('charCount').textContent = chars;
+            document.getElementById('lineCount').textContent = lines;
+            document.getElementById('wordCount').textContent = words;
+            document.getElementById('textPreview').textContent = data.text || '';
+
             result.classList.add('show');
         }
         

@@ -131,12 +131,17 @@ async def extract_single_pdf(
 
         # Extract text using complete pipeline
         result = local_extractor.extract(str(temp_path))
-        text = result.raw_text  # Use raw_text for API response
-        
-        # Get statistics from extraction result
-        char_count = len(text)
-        line_count = len(text.split('\n'))
-        word_count = len(text.split())
+        text = result.raw_text if result.raw_text else ""  # Ensure string
+
+        # Get statistics from extraction result (with safe defaults)
+        char_count = len(text) if text else 0
+        line_count = len(text.split('\n')) if text else 0
+        word_count = len(text.split()) if text else 0
+
+        # Safely extract quality metrics with defaults
+        quality_score = getattr(result, 'quality_score', 0.0)
+        quality_grade = getattr(result, 'quality_grade', 'Unknown')
+        verification_result = getattr(result, 'verification_result', None)
 
         return {
             "success": True,
@@ -148,11 +153,11 @@ async def extract_single_pdf(
                 "words": word_count
             },
             "quality_metrics": {
-                "quality_score": result.quality_score,
-                "quality_grade": result.quality_grade,
-                "verification_passed": result.verification_result.passed if result.verification_result else None,
-                "element_match_rate": result.verification_result.element_match_rate if result.verification_result else None,
-                "position_consistency": result.verification_result.position_consistency if result.verification_result else None
+                "quality_score": quality_score if quality_score is not None else 0.0,
+                "quality_grade": quality_grade if quality_grade else "Unknown",
+                "verification_passed": verification_result.passed if verification_result else False,
+                "element_match_rate": verification_result.element_match_rate if verification_result else 0.0,
+                "position_consistency": verification_result.position_consistency if verification_result else 0.0
             },
             "error_handling": {
                 "total_errors": result.error_report.get("total_errors", 0),
