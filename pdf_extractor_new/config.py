@@ -3,6 +3,10 @@ Configuration settings for PDF Extractor
 """
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file (for API keys)
+load_dotenv()
 
 # Base directory
 BASE_DIR = Path(__file__).parent
@@ -154,6 +158,22 @@ OCR_MIN_WORDS_THRESHOLD = 10          # Pages with fewer words are considered sc
 OCR_RESOLUTION = 300                  # DPI for image conversion (higher = better quality, slower)
 OCR_DENOISE = True                    # Apply denoising to improve recognition
 OCR_VERBOSE = False                   # Print OCR progress and confidence scores
+
+# ═══════════════════════════════════════════════════════════════════
+# LLM SETTINGS (for AI-powered verification)
+# ═══════════════════════════════════════════════════════════════════
+# SECURITY: Store API keys in .env file, NOT here!
+# Create .env file with: OPENAI_API_KEY=your-key-here
+
+LLM_BACKEND = os.getenv("LLM_BACKEND", "mock")     # Options: "openai", "anthropic", "local", "mock"
+LLM_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("ANTHROPIC_API_KEY")  # Auto-load from .env
+LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4")        # OpenAI: gpt-4, gpt-3.5-turbo | Anthropic: claude-3-opus-20240229
+LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1000"))
+LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.1"))
+
+# LLM is DISABLED by default for security (no API key required)
+# To enable: Set ENABLE_LLM_VERIFICATION = True AND add API key to .env
+# LLM_BACKEND will use "mock" mode if no API key is provided (for testing)
 
 # Logging
 LOG_LEVEL = "INFO"  # DEBUG, INFO, WARNING, ERROR
