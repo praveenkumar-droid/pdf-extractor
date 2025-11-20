@@ -149,8 +149,27 @@ async def extract_single_pdf(
             },
             "quality_metrics": {
                 "quality_score": result.quality_score,
+                "quality_grade": result.quality_grade,
                 "verification_passed": result.verification_result.passed if result.verification_result else None,
-                "element_match_rate": result.verification_result.element_match_rate if result.verification_result else None
+                "element_match_rate": result.verification_result.element_match_rate if result.verification_result else None,
+                "position_consistency": result.verification_result.position_consistency if result.verification_result else None
+            },
+            "error_handling": {
+                "total_errors": result.error_report.get("total_errors", 0),
+                "errors_by_type": result.error_report.get("errors_by_type", {}),
+                "recovery_rate": result.error_report.get("recovery_rate", 1.0),
+                "pages_affected": result.error_report.get("pages_affected", [])
+            },
+            "features_used": {
+                "table_exclusion": True,
+                "superscript_integration": True,
+                "footnote_preservation": True,
+                "anti_hallucination": True,
+                "word_spacing": True,
+                "error_recovery": True,
+                "remediation_loop": True,
+                "horizontal_banding": True,
+                "llm_verification": False  # Disabled by default
             },
             "extracted_at": datetime.now().isoformat()
         }
@@ -233,7 +252,10 @@ async def process_batch(job_id: str, files: List[UploadFile]):
                 "success": True,
                 "text": text,
                 "characters": len(text),
-                "quality_score": result.quality_score
+                "quality_score": result.quality_score,
+                "quality_grade": result.quality_grade,
+                "error_count": result.error_report.get("total_errors", 0),
+                "verification_passed": result.verification_result.passed if result.verification_result else None
             })
             processing_jobs[job_id]["completed"] += 1
         
