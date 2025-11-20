@@ -183,7 +183,7 @@ class LayoutAnalyzer:
     """
     
     def __init__(self):
-        # Table detection settings
+        # Table detection settings - STRICT mode
         self.table_settings = {
             "vertical_strategy": "lines_strict",
             "horizontal_strategy": "lines_strict",
@@ -193,22 +193,34 @@ class LayoutAnalyzer:
             "min_words_vertical": 3,
             "min_words_horizontal": 1,
         }
-        
+
         # Alternative settings for tables without clear lines
+        # DISABLED BY DEFAULT - too many false positives
         self.table_settings_text = {
             "vertical_strategy": "text",
             "horizontal_strategy": "text",
             "snap_tolerance": 5,
             "join_tolerance": 5,
+            "min_words_vertical": 5,  # Increased to reduce false positives
+            "min_words_horizontal": 3,  # Increased to reduce false positives
         }
-        
+
         # Text box detection thresholds
         self.textbox_min_words = 5
         self.textbox_isolation_threshold = 30  # pixels
-        
-        # Region detection
-        self.min_table_rows = 2
-        self.min_table_cols = 2
+
+        # Region detection - INCREASED to reduce false positives
+        self.min_table_rows = 3  # Increased from 2
+        self.min_table_cols = 3  # Increased from 2
+        self.min_table_cells = 9  # New: minimum total cells (3x3)
+
+        # Confidence thresholds
+        self.min_line_table_confidence = 0.8
+        self.min_text_table_confidence = 0.9  # Higher for text-based
+
+        # Enable/disable strategies
+        self.enable_line_detection = True
+        self.enable_text_detection = False  # DISABLED - too many false positives
     
     def analyze_page(self, page, page_num: int) -> List[LayoutRegion]:
         """
@@ -258,31 +270,33 @@ class LayoutAnalyzer:
     
     def _detect_tables(self, page, page_num: int) -> List[Table]:
         """
-        Detect tables on a page.
-        
-        Uses multiple strategies:
-        1. Line-based detection (clear borders)
-        2. Text-based detection (no borders)
+        Detect tables on a page using CONSERVATIVE detection.
+
+        Strategy:
+        1. Line-based detection ONLY (clear borders required)
+        2. Text-based detection DISABLED by default (too many false positives)
+        3. Strict validation of detected tables
         """
         tables = []
-        
-        # Try line-based detection first
-        try:
-            line_tables = page.find_tables(self.table_settings)
-            for pt in line_tables:
-                table = self._convert_pdfplumber_table(pt, page_num, confidence=0.9)
-                if table and table.rows >= self.min_table_rows and table.cols >= self.min_table_cols:
-                    tables.append(table)
-        except Exception as e:
-            pass  # Line detection failed
-        
-        # If no tables found, try text-based detection
-        if not tables:
+
+        # Try line-based detection (requires actual table borders)
+        if self.enable_line_detection:
+            try:
+                line_tables = page.find_tables(self.table_settings)
+                for pt in line_tables:
+                    table = self._convert_pdfplumber_table(pt, page_num, confidence=0.9)
+                    if table and self._is_valid_table(table, is_text_based=False):
+                        tables.append(table)
+            except Exception as e:
+                pass  # Line detection failed
+
+        # Text-based detection (DISABLED by default - see config)
+        if self.enable_text_detection and not tables:
             try:
                 text_tables = page.find_tables(self.table_settings_text)
                 for pt in text_tables:
                     table = self._convert_pdfplumber_table(pt, page_num, confidence=0.7)
-                    if table and table.rows >= self.min_table_rows and table.cols >= self.min_table_cols:
+                    if table and self._is_valid_table(table, is_text_based=True):
                         tables.append(table)
             except Exception as e:
                 pass  # Text detection also failed
@@ -380,6 +394,49 @@ class LayoutAnalyzer:
         
         return first_row_all_text and other_rows_have_numbers
     
+    def _is_valid_table(self, table: Table, is_text_based: bool = False) -> bool:
+        """
+        Validate if detected table is actually a table (not false positive).
+
+        Checks:
+        1. Minimum size requirements (rows × cols)
+        2. Minimum total cells
+        3. Confidence threshold
+        4. Content validation (not just headers/repeated text)
+        5. Structural validation (proper grid, not just aligned text)
+        """
+        # Size validation
+        if table.rows < self.min_table_rows or table.cols < self.min_table_cols:
+            return False
+
+        # Total cells validation
+        total_cells = table.rows * table.cols
+        if total_cells < self.min_table_cells:
+            return False
+
+        # Confidence threshold
+        min_confidence = self.min_text_table_confidence if is_text_based else self.min_line_table_confidence
+        if table.confidence < min_confidence:
+            return False
+
+        # Content validation - check if cells have actual content
+        non_empty_cells = sum(1 for cell in table.cells if cell.text.strip())
+        if non_empty_cells < (total_cells * 0.5):  # At least 50% filled
+            return False
+
+        # For text-based tables, apply stricter validation
+        if is_text_based:
+            # Reject very large "tables" (likely just aligned text)
+            if table.rows > 20 or table.cols > 10:
+                return False
+
+            # Check for repeating patterns (sign of false positive)
+            texts = [cell.text.strip() for cell in table.cells if cell.text.strip()]
+            if len(set(texts)) < len(texts) * 0.3:  # Too many duplicates
+                return False
+
+        return True
+
     def _deduplicate_tables(self, tables: List[Table]) -> List[Table]:
         """Remove overlapping/duplicate tables"""
         if not tables:
