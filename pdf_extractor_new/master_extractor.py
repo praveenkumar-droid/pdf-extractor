@@ -59,6 +59,8 @@ class ExtractionResult:
     inventory_report: Dict[str, Any]
     footnote_report: Dict[str, Any]
     quality_report: Dict[str, Any]
+    quality_score: float             # Overall quality score (0-100)
+    verification_result: Any         # Anti-hallucination verification result
     
     # Extracted elements
     footnotes: List[Dict]
@@ -488,7 +490,85 @@ class MasterExtractor:
         if self.verbose:
             grade_icon = "🟢" if quality_grade in ["Excellent", "Good"] else "🟡" if quality_grade == "Acceptable" else "🔴"
             print(f"  → Grade: {grade_icon} {quality_grade} ({quality_report['overall_score']:.1f}/100)")
-        
+
+        # ═══════════════════════════════════════════════════════════
+        # PHASE 8b: VERIFICATION-REMEDIATION LOOP
+        # ═══════════════════════════════════════════════════════════
+        remediation_attempts = 0
+        max_remediation_attempts = 2
+        quality_threshold = 70.0  # Minimum acceptable quality score
+
+        # Store best result
+        best_quality_score = quality_report['overall_score']
+        best_raw_text = raw_text
+        best_pages = pages_with_content
+        best_quality_report = quality_report
+        best_verification_result = verification_result
+
+        if quality_report['overall_score'] < quality_threshold:
+            if self.verbose:
+                print(f"\n[Phase 8b] Quality below threshold ({quality_threshold}%) - attempting remediation...")
+
+            while remediation_attempts < max_remediation_attempts and best_quality_score < quality_threshold:
+                remediation_attempts += 1
+
+                if self.verbose:
+                    print(f"\n  → Remediation attempt {remediation_attempts}/{max_remediation_attempts}")
+
+                # Try remediation with different strategy
+                remediated_text, remediated_pages, remediated_quality = self._attempt_remediation(
+                    pdf_path,
+                    page_analyses,
+                    inventories,
+                    footnote_report,
+                    all_tables,
+                    pages,
+                    attempt=remediation_attempts
+                )
+
+                if self.verbose:
+                    improvement = remediated_quality['overall_score'] - best_quality_score
+                    print(f"    Quality: {remediated_quality['overall_score']:.1f}/100 ({improvement:+.1f})")
+
+                # Keep if better
+                if remediated_quality['overall_score'] > best_quality_score:
+                    best_quality_score = remediated_quality['overall_score']
+                    best_raw_text = remediated_text
+                    best_pages = remediated_pages
+                    best_quality_report = remediated_quality
+
+                    # Re-run anti-hallucination on remediated text
+                    remediated_verification = self.anti_hallucination.verify(
+                        remediated_text,
+                        inventory_report,
+                        len(pages)
+                    )
+                    best_verification_result = remediated_verification
+
+                    if self.verbose:
+                        print(f"    ✓ Improved quality - keeping this version")
+                else:
+                    if self.verbose:
+                        print(f"    ✗ No improvement - keeping original")
+
+                # If we reached acceptable quality, stop
+                if best_quality_score >= quality_threshold:
+                    if self.verbose:
+                        print(f"\n  ✓ Reached acceptable quality ({best_quality_score:.1f}%) - stopping remediation")
+                    break
+
+            # Use best version
+            raw_text = best_raw_text
+            pages_with_content = best_pages
+            quality_report = best_quality_report
+            quality_grade = quality_report['grade']
+            verification_result = best_verification_result
+
+            if self.verbose:
+                if best_quality_score < quality_threshold:
+                    print(f"\n  ⚠ Could not reach acceptable quality after {remediation_attempts} attempts")
+                    print(f"  → Final quality: {best_quality_score:.1f}/100")
+
         # ═══════════════════════════════════════════════════════════
         # CREATE RESULT
         # ═══════════════════════════════════════════════════════════
@@ -501,6 +581,8 @@ class MasterExtractor:
             inventory_report=inventory_report,
             footnote_report=footnote_report,
             quality_report=quality_report,
+            quality_score=quality_report['overall_score'],
+            verification_result=verification_result,
             footnotes=footnotes_list,
             tables=all_tables,
             textboxes=all_textboxes,
@@ -531,7 +613,76 @@ class MasterExtractor:
             print(f"{'='*60}\n")
         
         return result
-    
+
+    def _attempt_remediation(self, pdf_path: str, page_analyses: list, inventories: dict,
+                            footnote_report: dict, all_tables: list, original_pages: list,
+                            attempt: int) -> tuple:
+        """
+        Attempt to improve extraction quality with different settings.
+
+        Strategies by attempt:
+        1. Disable margin filtering (keep more content)
+        2. Use looser column gap detection (better multi-column handling)
+
+        Args:
+            pdf_path: Path to PDF file
+            page_analyses: Pre-analysis results
+            inventories: Element inventory
+            footnote_report: Footnote analysis
+            all_tables: Extracted tables
+            original_pages: Original page list
+            attempt: Attempt number (1 or 2)
+
+        Returns:
+            Tuple of (remediated_text, remediated_pages, quality_report)
+        """
+        import config
+
+        # Save original config
+        original_remove_headers = config.REMOVE_HEADERS_FOOTERS
+        original_column_gap = config.COLUMN_GAP_THRESHOLD
+
+        try:
+            # Apply remediation strategy
+            if attempt == 1:
+                # Strategy 1: Disable margin filtering to keep more content
+                config.REMOVE_HEADERS_FOOTERS = False
+            elif attempt == 2:
+                # Strategy 2: Looser column gap for better multi-column handling
+                config.COLUMN_GAP_THRESHOLD = config.COLUMN_GAP_THRESHOLD * 1.5
+                config.REMOVE_HEADERS_FOOTERS = False
+
+            # Re-extract with new settings
+            remediated_pages = self._extract_pages_safe(pdf_path, page_analyses)
+            remediated_text = '\n\n'.join(remediated_pages)
+
+            # Integrate tables and footnotes (same as main extraction)
+            pages_with_content = []
+            for page_num, page_text in enumerate(remediated_pages, 1):
+                # Add footnotes for this page (same logic as main extraction)
+                # Simplified for remediation
+                pages_with_content.append(page_text)
+
+            # Re-score quality
+            remediated_quality_obj = self.quality_scorer.score_extraction(
+                extracted_text=remediated_text,
+                inventory_report=self.inventory_analyzer.verify_extraction(
+                    inventories, remediated_text, len(remediated_pages)
+                ),
+                footnote_report=footnote_report,
+                table_count=len(all_tables),
+                page_count=len(remediated_pages)
+            )
+
+            remediated_quality = remediated_quality_obj.to_dict()
+
+            return remediated_text, pages_with_content, remediated_quality
+
+        finally:
+            # Always restore original config
+            config.REMOVE_HEADERS_FOOTERS = original_remove_headers
+            config.COLUMN_GAP_THRESHOLD = original_column_gap
+
     def _extract_pages_safe(self, pdf_path: str, page_analyses: list) -> List[str]:
         """
         Extract text as list of pages with error handling.
