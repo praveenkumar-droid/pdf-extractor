@@ -41,6 +41,22 @@ FIX_SPACING = True       # Optional - can be disabled if needed
 JOIN_LINES = True        # Optional - can be disabled if needed
 FIX_PUNCTUATION = True   # Optional - can be disabled if needed
 
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE ENABLE FLAGS (for extractor_integrated.py compatibility)
+# ═══════════════════════════════════════════════════════════════════
+ENABLE_ELEMENT_INVENTORY = True      # Phase 0: Element counting
+ENABLE_SUPERSCRIPT_DETECTION = True  # Phase 1: Super/subscripts
+ENABLE_LAYOUT_ANALYSIS = True        # Phase 2: Tables, textboxes
+ENABLE_FOOTNOTE_EXTRACTION = True    # Phase 6: Footnotes
+ENABLE_ANTI_HALLUCINATION = True     # Phase 5b: Anti-hallucination
+ENABLE_ERROR_RECOVERY = True         # Phase 8: Error handling
+ENABLE_QUALITY_SCORING = True        # Phase 7: Quality scoring
+ENABLE_LLM_VERIFICATION = False      # Phase 5: LLM verification (disabled by default)
+ENABLE_CHUNKING = True               # Phase 10: Large documents
+ENABLE_ROTATION_FIX = True           # Error handler: Rotated pages
+ENABLE_ENCODING_FALLBACK = True      # Error handler: Encoding issues
+ENABLE_OCR_DETECTION = True          # Error handler: Scanned pages
+
 # Logging
 LOG_LEVEL = "INFO"  # DEBUG, INFO, WARNING, ERROR
 LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
