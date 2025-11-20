@@ -115,6 +115,22 @@ MIN_QUALITY_THRESHOLD = 70.0         # Minimum quality score (0-100)
 REMEDIATION_THRESHOLD = 70.0         # Trigger remediation if below this
 MAX_REMEDIATION_ATTEMPTS = 2         # Maximum remediation attempts
 
+# ═══════════════════════════════════════════════════════════════════
+# OUTPUT FORMATTING SETTINGS
+# ═══════════════════════════════════════════════════════════════════
+INCLUDE_PAGE_MARKERS = True          # Add page markers (--- Page N ---) to output
+INCLUDE_STATISTICS = True            # Add statistics to output
+INCLUDE_TIMESTAMP = True             # Add timestamp to output
+INCLUDE_METADATA = True              # Include extraction metadata
+INCLUDE_CONFIDENCE_SCORES = True     # Include confidence scores for flagged content
+
+# ═══════════════════════════════════════════════════════════════════
+# TEXT FORMATTING SETTINGS
+# ═══════════════════════════════════════════════════════════════════
+PRESERVE_WHITESPACE = True           # Preserve original whitespace
+PRESERVE_LINE_BREAKS = True          # Preserve original line breaks
+NORMALIZE_LINE_ENDINGS = False       # Convert all line endings to \n (disabled for fidelity)
+
 # Logging
 LOG_LEVEL = "INFO"  # DEBUG, INFO, WARNING, ERROR
 LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
