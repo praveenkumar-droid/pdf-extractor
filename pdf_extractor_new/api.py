@@ -13,7 +13,7 @@ from datetime import datetime
 import json
 import asyncio
 
-from extractor import JapanesePDFExtractor
+from master_extractor import MasterExtractor
 from processor import FileSystemProcessor
 from ui_routes import setup_ui_routes
 import config
@@ -36,8 +36,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize extractor
-extractor = JapanesePDFExtractor()
+# Initialize extractor with full feature set
+extractor = MasterExtractor(
+    verbose=False,  # Don't print to console in API
+    enable_llm_verification=False,  # Can enable if you have API key
+    enable_chunking=True
+)
 processor = FileSystemProcessor()
 
 # Temporary upload directory
@@ -117,35 +121,23 @@ async def extract_single_pdf(
         with open(temp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
-        # Thread-safe config modification
-        with _config_lock:
-            # Store original config values
-            original_normalize = config.NORMALIZE_CHARACTERS
-            original_spacing = config.FIX_SPACING
-            original_headers = config.REMOVE_HEADERS_FOOTERS
-            
-            try:
-                # Apply request-specific settings
-                config.NORMALIZE_CHARACTERS = normalize
-                config.FIX_SPACING = fix_spacing
-                config.REMOVE_HEADERS_FOOTERS = remove_headers
-                
-                # Create fresh extractor instance for this request
-                local_extractor = JapanesePDFExtractor()
-                
-                # Extract text
-                text = local_extractor.extract_pdf(str(temp_path))
-            finally:
-                # Always restore config
-                config.NORMALIZE_CHARACTERS = original_normalize
-                config.FIX_SPACING = original_spacing
-                config.REMOVE_HEADERS_FOOTERS = original_headers
+        # Create MasterExtractor instance with full feature set
+        # Note: MasterExtractor handles config internally, no need for thread-safe modification
+        local_extractor = MasterExtractor(
+            verbose=False,  # Don't print to console in API
+            enable_llm_verification=False,  # Can enable if you have API key
+            enable_chunking=True
+        )
+
+        # Extract text using complete pipeline
+        result = local_extractor.extract(str(temp_path))
+        text = result.raw_text  # Use raw_text for API response
         
-        # Get statistics
+        # Get statistics from extraction result
         char_count = len(text)
         line_count = len(text.split('\n'))
         word_count = len(text.split())
-        
+
         return {
             "success": True,
             "filename": file.filename,
@@ -154,6 +146,11 @@ async def extract_single_pdf(
                 "characters": char_count,
                 "lines": line_count,
                 "words": word_count
+            },
+            "quality_metrics": {
+                "quality_score": result.quality_score,
+                "verification_passed": result.verification_result.passed if result.verification_result else None,
+                "element_match_rate": result.verification_result.element_match_rate if result.verification_result else None
             },
             "extracted_at": datetime.now().isoformat()
         }
@@ -226,15 +223,17 @@ async def process_batch(job_id: str, files: List[UploadFile]):
             with open(temp_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
             
-            # Extract
-            text = extractor.extract_pdf(str(temp_path))
-            
-            # Store result
+            # Extract using MasterExtractor
+            result = extractor.extract(str(temp_path))
+            text = result.raw_text
+
+            # Store result with quality metrics
             processing_jobs[job_id]["results"].append({
                 "filename": file.filename,
                 "success": True,
                 "text": text,
-                "characters": len(text)
+                "characters": len(text),
+                "quality_score": result.quality_score
             })
             processing_jobs[job_id]["completed"] += 1
         
