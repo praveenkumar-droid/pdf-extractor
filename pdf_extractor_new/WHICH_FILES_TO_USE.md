@@ -30,6 +30,7 @@ Uses: `run_complete_system.py` → `master_extractor.py`
 ### Extraction Engine
 - **`master_extractor.py`** - Main extraction pipeline (Phase 0-10) - **PRIMARY**
 - **`extractor.py`** - Core text extractor with all improvements
+- **`ocr_processor.py`** - OCR for scanned PDFs (EasyOCR/Tesseract) - **NEW**
 - **`layout_analyzer.py`** - Table/textbox detection (conservative mode)
 - **`footnote_extractor.py`** - Footnote system
 - **`anti_hallucination.py`** - Anti-hallucination verification
@@ -151,6 +152,7 @@ ENABLE_LLM_VERIFICATION = False      # Requires API key (optional)
 
 ## 📊 All Features Active
 
+✅ **OCR for Scanned PDFs** - Automatic OCR for image-based pages - **NEW**
 ✅ Table Region Exclusion (+12-15%) - **Conservative, borders only**
 ✅ Superscript/Subscript Integration (+8-10%)
 ✅ Bottom Margin Footnotes (+6-8%)
@@ -160,7 +162,7 @@ ENABLE_LLM_VERIFICATION = False      # Requires API key (optional)
 ✅ Verification-Remediation Loop (+2-3%)
 ✅ Error Recovery (rotated pages, encoding issues)
 
-**Total:** ~98-100% accuracy (exceeds 95% target)
+**Total:** ~98-100% accuracy (exceeds 95% target) + OCR support
 
 ---
 
@@ -174,6 +176,12 @@ ENABLE_LLM_VERIFICATION = False      # Requires API key (optional)
 
 **Problem:** Missing content
 **Solution:** Check `REMOVE_HEADERS_FOOTERS` setting in `config.py`
+
+**Problem:** Scanned PDF not extracting text
+**Solution:** Install OCR engine: `pip install easyocr`
+
+**Problem:** OCR too slow
+**Solution:** Enable GPU acceleration in `config.py`: `OCR_USE_GPU = True`
 
 **Problem:** Confused about which file to use
 **Solution:** Always use `api.py` for web UI, `config.py` for settings
