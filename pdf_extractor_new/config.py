@@ -94,6 +94,27 @@ ENABLE_FLAGGING_SYSTEM = True        # Content flagging system
 ENABLE_MULTI_ENGINE = False          # Multi-engine consensus (advanced)
 ENABLE_BATCH_PROCESSING = True       # Batch processing support
 
+# ═══════════════════════════════════════════════════════════════════
+# TABLE OUTPUT SETTINGS
+# ═══════════════════════════════════════════════════════════════════
+TABLE_OUTPUT_FORMAT = "markdown"     # Options: "markdown", "csv", "text", "json"
+TABLE_INCLUDE_BORDERS = True         # Add borders in text format
+TABLE_PRESERVE_ALIGNMENT = True      # Preserve column alignment
+TABLE_MIN_CONFIDENCE = 0.7           # Minimum confidence to include table
+
+# ═══════════════════════════════════════════════════════════════════
+# FOOTNOTE OUTPUT SETTINGS
+# ═══════════════════════════════════════════════════════════════════
+FOOTNOTE_OUTPUT_FORMAT = "inline"    # Options: "inline", "endnotes", "separate"
+FOOTNOTE_MARKER_FORMAT = "original"  # Options: "original", "numbered", "symbols"
+
+# ═══════════════════════════════════════════════════════════════════
+# QUALITY THRESHOLDS
+# ═══════════════════════════════════════════════════════════════════
+MIN_QUALITY_THRESHOLD = 70.0         # Minimum quality score (0-100)
+REMEDIATION_THRESHOLD = 70.0         # Trigger remediation if below this
+MAX_REMEDIATION_ATTEMPTS = 2         # Maximum remediation attempts
+
 # Logging
 LOG_LEVEL = "INFO"  # DEBUG, INFO, WARNING, ERROR
 LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
