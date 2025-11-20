@@ -44,18 +44,55 @@ FIX_PUNCTUATION = True   # Optional - can be disabled if needed
 # ═══════════════════════════════════════════════════════════════════
 # FEATURE ENABLE FLAGS (for extractor_integrated.py compatibility)
 # ═══════════════════════════════════════════════════════════════════
-ENABLE_ELEMENT_INVENTORY = True      # Phase 0: Element counting
-ENABLE_SUPERSCRIPT_DETECTION = True  # Phase 1: Super/subscripts
-ENABLE_LAYOUT_ANALYSIS = True        # Phase 2: Tables, textboxes
-ENABLE_FOOTNOTE_EXTRACTION = True    # Phase 6: Footnotes
-ENABLE_ANTI_HALLUCINATION = True     # Phase 5b: Anti-hallucination
-ENABLE_ERROR_RECOVERY = True         # Phase 8: Error handling
-ENABLE_QUALITY_SCORING = True        # Phase 7: Quality scoring
-ENABLE_LLM_VERIFICATION = False      # Phase 5: LLM verification (disabled by default)
-ENABLE_CHUNKING = True               # Phase 10: Large documents
-ENABLE_ROTATION_FIX = True           # Error handler: Rotated pages
-ENABLE_ENCODING_FALLBACK = True      # Error handler: Encoding issues
-ENABLE_OCR_DETECTION = True          # Error handler: Scanned pages
+# Phase 0: Pre-analysis
+ENABLE_ELEMENT_INVENTORY = True      # Element counting and inventory
+ENABLE_PAGE_ANALYSIS = True          # Page-level pre-analysis
+
+# Phase 1: Script detection
+ENABLE_SUPERSCRIPT_DETECTION = True  # Superscript/subscript detection
+ENABLE_SCRIPT_INTEGRATION = True     # Integrate scripts with base text
+
+# Phase 2: Layout analysis
+ENABLE_LAYOUT_ANALYSIS = True        # Tables, textboxes, regions
+ENABLE_TABLE_DETECTION = True        # Table detection and extraction
+ENABLE_TEXTBOX_EXTRACTION = True     # Text box extraction
+
+# Phase 3-4: Text extraction
+ENABLE_SMART_FILTERING = True        # Smart header/footer filtering
+ENABLE_HORIZONTAL_BANDING = True     # Horizontal band grouping
+
+# Phase 5: Verification
+ENABLE_LLM_VERIFICATION = False      # LLM verification (disabled by default, requires API key)
+ENABLE_ANTI_HALLUCINATION = True     # Anti-hallucination verification
+
+# Phase 6: Footnotes
+ENABLE_FOOTNOTE_EXTRACTION = True    # Footnote extraction
+ENABLE_FOOTNOTE_MATCHING = True      # Match markers to definitions
+ENABLE_CROSS_PAGE_FOOTNOTES = True   # Cross-page footnote matching
+
+# Phase 7: Quality
+ENABLE_QUALITY_SCORING = True        # Quality scoring system
+ENABLE_ITERATIVE_VERIFICATION = True # Multiple verification passes
+
+# Phase 8: Error handling
+ENABLE_ERROR_RECOVERY = True         # Advanced error recovery
+ENABLE_ROTATION_FIX = True           # Rotated page detection/fix
+ENABLE_ENCODING_FALLBACK = True      # Encoding issue handling
+ENABLE_OCR_DETECTION = True          # Scanned page detection
+ENABLE_REMEDIATION_LOOP = True       # Quality remediation loop
+
+# Phase 9: Output formatting
+ENABLE_PAGE_MARKERS = True           # Add page markers to output
+ENABLE_CONFIDENCE_MARKERS = True     # Add confidence annotations
+
+# Phase 10: Large documents
+ENABLE_CHUNKING = True               # Large document chunking
+ENABLE_CONTEXT_WINDOWS = True        # Context window management
+
+# Additional features
+ENABLE_FLAGGING_SYSTEM = True        # Content flagging system
+ENABLE_MULTI_ENGINE = False          # Multi-engine consensus (advanced)
+ENABLE_BATCH_PROCESSING = True       # Batch processing support
 
 # Logging
 LOG_LEVEL = "INFO"  # DEBUG, INFO, WARNING, ERROR
