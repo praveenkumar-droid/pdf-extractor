@@ -15,8 +15,8 @@ LOGS_DIR = BASE_DIR / "logs"
 # Extraction settings
 COLUMN_GAP_THRESHOLD = 50  # pixels - gap size to detect new column
 LINE_HEIGHT_THRESHOLD = 15  # pixels - max Y-distance for same line
-MARGIN_TOP_PERCENT = 0.05  # Top 5% is margin (headers)
-MARGIN_BOTTOM_PERCENT = 0.95  # Bottom 5% is margin (footers)
+MARGIN_TOP_PERCENT = 0.0   # DISABLED - was removing real content
+MARGIN_BOTTOM_PERCENT = 1.0  # DISABLED - was removing real content
 
 # Processing settings
 SKIP_EXISTING = True  # Skip files that already have output
@@ -35,11 +35,12 @@ NORMALIZE_KATAKANA = False    # DISABLED - Violates "no transformation" rule
 # ═══════════════════════════════════════════════════════════════════
 
 # Cleanup settings (minimal, non-transformative)
-REMOVE_HEADERS_FOOTERS = True
-REMOVE_PAGE_NUMBERS = True
-FIX_SPACING = True       # Optional - can be disabled if needed
-JOIN_LINES = True        # Optional - can be disabled if needed
-FIX_PUNCTUATION = True   # Optional - can be disabled if needed
+# DISABLED TO FIX EXTRACTION - WAS REMOVING REAL CONTENT
+REMOVE_HEADERS_FOOTERS = False  # DISABLED - removing actual content
+REMOVE_PAGE_NUMBERS = False     # DISABLED - removing actual content
+FIX_SPACING = False      # DISABLED - might break Japanese text
+JOIN_LINES = False       # DISABLED - might break Japanese text
+FIX_PUNCTUATION = False  # DISABLED - might break Japanese text
 
 # ═══════════════════════════════════════════════════════════════════
 # FEATURE ENABLE FLAGS (for extractor_integrated.py compatibility)
@@ -95,13 +96,14 @@ ENABLE_MULTI_ENGINE = False          # Multi-engine consensus (advanced)
 ENABLE_BATCH_PROCESSING = True       # Batch processing support
 
 # ═══════════════════════════════════════════════════════════════════
-# TABLE DETECTION SETTINGS
+# TABLE DETECTION SETTINGS - DISABLED TO FIX EXTRACTION
 # ═══════════════════════════════════════════════════════════════════
-TABLE_DETECTION_MODE = "strict"      # Options: "strict" (borders only), "moderate", "aggressive" (text-based)
-TABLE_MIN_ROWS = 3                   # Minimum rows for valid table (increased to reduce false positives)
-TABLE_MIN_COLS = 3                   # Minimum columns for valid table
-TABLE_MIN_CELLS = 9                  # Minimum total cells (rows × cols)
-TABLE_ENABLE_TEXT_DETECTION = False  # DISABLED - text-based detection causes false positives
+TABLE_DETECTION_MODE = "disabled"   # DISABLED - causing text fragmentation
+TABLE_MIN_ROWS = 3
+TABLE_MIN_COLS = 3
+TABLE_MIN_CELLS = 9
+TABLE_ENABLE_TEXT_DETECTION = False  # DISABLED
+ENABLE_TABLE_DETECTION = False       # COMPLETELY DISABLE TABLE DETECTION
 
 # ═══════════════════════════════════════════════════════════════════
 # TABLE OUTPUT SETTINGS

@@ -277,33 +277,38 @@ class JapanesePDFExtractor:
                 # Otherwise, keep it (might be section start or content)
             
             # ═══════════════════════════════════════════════════════
-            # RULE 6: SMART MARGIN HANDLING
+            # RULE 6: SMART MARGIN HANDLING - DISABLED TO FIX EXTRACTION
+            # ═══════════════════════════════════════════════════════
+            # ISSUE: Margin filtering was removing real content (headers, etc.)
+            # SOLUTION: Disabled completely - extract ALL content
+            # NOTE: config.MARGIN_TOP_PERCENT = 0.0 and MARGIN_BOTTOM_PERCENT = 1.0
+            #       means margins are disabled, but code was using hardcoded values
             # ═══════════════════════════════════════════════════════
 
-            # Top margin - still remove header area
-            if word['top'] < page_height * 0.05:  # Top 5%
-                # Check if it's a title (large text) - keep it
-                word_height = word.get('height', word.get('bottom', 0) - word['top'])
-                if word_height > 14:  # Likely a title
-                    filtered.append(word)
-                continue
+            # # Top margin - still remove header area
+            # if word['top'] < page_height * 0.05:  # Top 5%
+            #     # Check if it's a title (large text) - keep it
+            #     word_height = word.get('height', word.get('bottom', 0) - word['top'])
+            #     if word_height > 14:  # Likely a title
+            #         filtered.append(word)
+            #     continue
 
-            # Bottom margin - CAREFUL handling for footnotes
-            if word['top'] > page_height * 0.90:  # Bottom 10%
-                # ══════════════════════════════════════════════════
-                # NEW: Check if this is footnote content
-                # ══════════════════════════════════════════════════
-                if self._is_footnote_content(text, words, word):
-                    filtered.append(word)
-                    continue
+            # # Bottom margin - CAREFUL handling for footnotes
+            # if word['top'] > page_height * 0.90:  # Bottom 10%
+            #     # ══════════════════════════════════════════════════
+            #     # NEW: Check if this is footnote content
+            #     # ══════════════════════════════════════════════════
+            #     if self._is_footnote_content(text, words, word):
+            #         filtered.append(word)
+            #         continue
 
-                # Check if isolated page number
-                if self._is_page_number_not_content(text, word, page_height, page_width, words):
-                    continue
+            #     # Check if isolated page number
+            #     if self._is_page_number_not_content(text, word, page_height, page_width, words):
+            #         continue
 
-                # Default: KEEP bottom content (might be important)
-                filtered.append(word)
-                continue
+            #     # Default: KEEP bottom content (might be important)
+            #     filtered.append(word)
+            #     continue
 
             # ═══════════════════════════════════════════════════════
             # DEFAULT: KEEP IT (INCLUDE BY DEFAULT)
