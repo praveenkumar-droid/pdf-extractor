@@ -95,6 +95,15 @@ ENABLE_MULTI_ENGINE = False          # Multi-engine consensus (advanced)
 ENABLE_BATCH_PROCESSING = True       # Batch processing support
 
 # ═══════════════════════════════════════════════════════════════════
+# TABLE DETECTION SETTINGS
+# ═══════════════════════════════════════════════════════════════════
+TABLE_DETECTION_MODE = "strict"      # Options: "strict" (borders only), "moderate", "aggressive" (text-based)
+TABLE_MIN_ROWS = 3                   # Minimum rows for valid table (increased to reduce false positives)
+TABLE_MIN_COLS = 3                   # Minimum columns for valid table
+TABLE_MIN_CELLS = 9                  # Minimum total cells (rows × cols)
+TABLE_ENABLE_TEXT_DETECTION = False  # DISABLED - text-based detection causes false positives
+
+# ═══════════════════════════════════════════════════════════════════
 # TABLE OUTPUT SETTINGS
 # ═══════════════════════════════════════════════════════════════════
 TABLE_OUTPUT_FORMAT = "markdown"     # Options: "markdown", "csv", "text", "json"
