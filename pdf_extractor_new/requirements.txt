@@ -17,5 +17,11 @@ pdfminer.six==20231228
 anthropic==0.8.1
 openai==1.6.1
 
+# OCR for Scanned PDFs (Optional but recommended for scanned documents)
+# Install ONE of the following:
+easyocr>=1.7.0          # Recommended for Japanese - GPU optional, no external dependencies
+# pytesseract>=0.3.10   # Alternative - requires Tesseract binary installation
+Pillow>=10.0.0          # Required for image processing in OCR
+
 # Additional utilities
 requests==2.31.0

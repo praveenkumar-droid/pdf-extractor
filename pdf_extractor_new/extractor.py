@@ -45,6 +45,26 @@ class JapanesePDFExtractor:
         from layout_analyzer import LayoutAnalyzer
         self.layout_analyzer = LayoutAnalyzer()
 
+        # Initialize OCR processor if enabled
+        self.ocr_processor = None
+        if config.ENABLE_OCR_EXTRACTION:
+            try:
+                from ocr_processor import OCRProcessor
+                self.ocr_processor = OCRProcessor(
+                    languages=config.OCR_LANGUAGES,
+                    engine=config.OCR_ENGINE,
+                    gpu=config.OCR_USE_GPU,
+                    verbose=config.OCR_VERBOSE
+                )
+                if self.ocr_processor.is_available():
+                    print(f"[OCR] Initialized with engine: {self.ocr_processor.engine_used}")
+                else:
+                    print("[OCR] No OCR engine available (install easyocr or pytesseract)")
+                    self.ocr_processor = None
+            except ImportError:
+                print("[OCR] ocr_processor module not found")
+                self.ocr_processor = None
+
         # NOTE: Character normalization has been REMOVED (Phase 4)
         # Per LLM extraction specs: "EXTRACT ONLY - NEVER TRANSFORM"
         # All characters are now preserved exactly as they appear in PDF
@@ -167,6 +187,25 @@ class JapanesePDFExtractor:
             keep_blank_chars=False,
             extra_attrs=['fontname', 'size', 'height']
         )
+
+        # ══════════════════════════════════════════════════════════
+        # OCR HANDLING: If page has few/no words, try OCR
+        # ══════════════════════════════════════════════════════════
+        if len(words) < config.OCR_MIN_WORDS_THRESHOLD:
+            if self.ocr_processor and self.ocr_processor.is_available():
+                if config.OCR_VERBOSE:
+                    page_num = page.page_number if hasattr(page, 'page_number') else '?'
+                    print(f"[OCR] Page {page_num}: Only {len(words)} words found, using OCR...")
+
+                ocr_result = self.ocr_processor.process_page(page)
+
+                if ocr_result.success and ocr_result.confidence >= config.OCR_MIN_CONFIDENCE:
+                    if config.OCR_VERBOSE:
+                        print(f"[OCR] Successfully extracted {ocr_result.char_count} chars (confidence: {ocr_result.confidence:.1%})")
+                    return ocr_result.text
+                elif config.OCR_VERBOSE:
+                    print(f"[OCR] Failed or low confidence ({ocr_result.confidence:.1%}): {ocr_result.error}")
+        # ══════════════════════════════════════════════════════════
 
         if not words:
             return ""

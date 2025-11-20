@@ -80,6 +80,7 @@ ENABLE_ERROR_RECOVERY = True         # Advanced error recovery
 ENABLE_ROTATION_FIX = True           # Rotated page detection/fix
 ENABLE_ENCODING_FALLBACK = True      # Encoding issue handling
 ENABLE_OCR_DETECTION = True          # Scanned page detection
+ENABLE_OCR_EXTRACTION = True         # OCR text extraction for scanned pages
 ENABLE_REMEDIATION_LOOP = True       # Quality remediation loop
 
 # Phase 9: Output formatting
@@ -141,6 +142,18 @@ INCLUDE_CONFIDENCE_SCORES = True     # Include confidence scores for flagged con
 PRESERVE_WHITESPACE = True           # Preserve original whitespace
 PRESERVE_LINE_BREAKS = True          # Preserve original line breaks
 NORMALIZE_LINE_ENDINGS = False       # Convert all line endings to \n (disabled for fidelity)
+
+# ═══════════════════════════════════════════════════════════════════
+# OCR SETTINGS (for scanned PDFs)
+# ═══════════════════════════════════════════════════════════════════
+OCR_ENGINE = "auto"                   # Options: "auto", "easyocr", "tesseract"
+OCR_LANGUAGES = ['ja', 'en']          # Languages to recognize
+OCR_USE_GPU = False                   # Use GPU acceleration (EasyOCR only)
+OCR_MIN_CONFIDENCE = 0.5              # Minimum confidence threshold (0.0-1.0)
+OCR_MIN_WORDS_THRESHOLD = 10          # Pages with fewer words are considered scanned
+OCR_RESOLUTION = 300                  # DPI for image conversion (higher = better quality, slower)
+OCR_DENOISE = True                    # Apply denoising to improve recognition
+OCR_VERBOSE = False                   # Print OCR progress and confidence scores
 
 # Logging
 LOG_LEVEL = "INFO"  # DEBUG, INFO, WARNING, ERROR
